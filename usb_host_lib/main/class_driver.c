@@ -148,9 +148,10 @@ static void action_get_config_desc(class_driver_t *driver_obj)
 
     int j = 0;
     int desc_offset = 0;
-    for (j = 0; j < 9; ++j) {
+    for (j = 0; j <= 50; ++j) {
 
         const usb_intf_desc_t * intf_desc = usb_parse_interface_descriptor(config_desc, j, 0, &desc_offset);
+        if(intf_desc == NULL) break;
         const int temp_offset = desc_offset; // Save this offset for later
 
         // The interface can have 2-3 endpoints. 2 for data and 1 optional for notifications
@@ -162,8 +163,20 @@ static void action_get_config_desc(class_driver_t *driver_obj)
         for (int i = 0; i < intf_desc->bNumEndpoints; i++) {
             const usb_ep_desc_t *this_ep = usb_parse_endpoint_descriptor_by_index(intf_desc, i, config_desc->wTotalLength, &desc_offset);
             assert(this_ep);
-            printf("found Endpoint: %i on Interface %i \n", i, j);
-
+            printf("found Endpoint: %i on Interface %i ", i, j);
+            if (USB_EP_DESC_GET_XFERTYPE(this_ep) == USB_TRANSFER_TYPE_INTR) {
+                // Notification channel does not have its dedicated interface (data and notif interface is the same)
+                notif_ep = this_ep;
+                printf("this is a NOTIF/DATA EP \n");
+            } else if (USB_EP_DESC_GET_XFERTYPE(this_ep) == USB_TRANSFER_TYPE_BULK) {
+                if (USB_EP_DESC_GET_EP_DIR(this_ep)) {
+                    in_ep = this_ep;
+                    printf("this is a IN EP \n");
+                } else {
+                    out_ep = this_ep;
+                    printf("this is a OUT EP \n");
+                }
+            }
             desc_offset = temp_offset;
         }
 	}
