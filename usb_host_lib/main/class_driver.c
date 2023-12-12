@@ -117,7 +117,7 @@ static void action_get_dev_desc(class_driver_t *driver_obj)
 
             const usb_iad_desc_t *iad_desc = (const usb_iad_desc_t *)this_desc;
                 // IAD with correct interface number was found: Check Class/Subclass codes, save Interface indexes
-
+                printf("iad_desc->bFirstInterface   %i \n", iad_desc->bFirstInterface);
                 printf("iad_desc->bInterfaceCount   %i \n", iad_desc->bInterfaceCount);
                 printf("iad_desc->bFunctionClass    %i \n", iad_desc->bFunctionClass);
                 printf("iad_desc->bFunctionSubClass %i \n", iad_desc->bFunctionSubClass);
@@ -144,6 +144,31 @@ static void action_get_config_desc(class_driver_t *driver_obj)
     const usb_config_desc_t *config_desc;
     ESP_ERROR_CHECK(usb_host_get_active_config_descriptor(driver_obj->dev_hdl, &config_desc));
     usb_print_config_descriptor(config_desc, NULL);
+
+
+    int j = 0;
+    int desc_offset = 0;
+    for (j = 0; j < 9; ++j) {
+
+        const usb_intf_desc_t * intf_desc = usb_parse_interface_descriptor(config_desc, j, 0, &desc_offset);
+        const int temp_offset = desc_offset; // Save this offset for later
+
+        // The interface can have 2-3 endpoints. 2 for data and 1 optional for notifications
+        const usb_ep_desc_t *in_ep = NULL;
+        const usb_ep_desc_t *out_ep = NULL;
+        const usb_ep_desc_t *notif_ep = NULL;
+
+        // Go through all interface's endpoints and parse Interrupt and Bulk endpoints
+        for (int i = 0; i < intf_desc->bNumEndpoints; i++) {
+            const usb_ep_desc_t *this_ep = usb_parse_endpoint_descriptor_by_index(intf_desc, i, config_desc->wTotalLength, &desc_offset);
+            assert(this_ep);
+            printf("found Endpoint: %i on Interface %i \n", i, j);
+
+            desc_offset = temp_offset;
+        }
+	}
+
+
     //Get the device's string descriptors next
     driver_obj->actions &= ~ACTION_GET_CONFIG_DESC;
     driver_obj->actions |= ACTION_GET_STR_DESC;
