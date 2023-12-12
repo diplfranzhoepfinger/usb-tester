@@ -12,6 +12,16 @@
 
 #define CLIENT_NUM_EVENT_MSG        5
 
+
+// CDC devices often implement Interface Association Descriptor (IAD). Parse IAD only when
+// bDeviceClass = 0xEF (Miscellaneous Device Class), bDeviceSubClass = 0x02 (Common Class), bDeviceProtocol = 0x01 (Interface Association Descriptor),
+// or when bDeviceClass, bDeviceSubClass, and bDeviceProtocol are 0x00 (Null class code triple), as per https://www.usb.org/defined-class-codes, "Base Class 00h (Device)" section
+// @see USB Interface Association Descriptor: Device Class Code and Use Model rev 1.0, Table 1-1
+#define USB_SUBCLASS_NULL        0x00
+#define USB_SUBCLASS_COMMON        0x02
+#define USB_PROTOCOL_NULL    0x00
+#define USB_DEVICE_PROTOCOL_IAD    0x01
+
 typedef enum {
     ACTION_OPEN_DEV = 0x01,
     ACTION_GET_DEV_INFO = 0x02,
@@ -84,9 +94,44 @@ static void action_get_dev_desc(class_driver_t *driver_obj)
 {
     assert(driver_obj->dev_hdl != NULL);
     ESP_LOGI(TAG, "Getting device descriptor");
+    const usb_config_desc_t *config_desc;
     const usb_device_desc_t *dev_desc;
+    int desc_offset = 0;
     ESP_ERROR_CHECK(usb_host_get_device_descriptor(driver_obj->dev_hdl, &dev_desc));
+    ESP_ERROR_CHECK(usb_host_get_active_config_descriptor(driver_obj->dev_hdl, &config_desc));
     usb_print_device_descriptor(dev_desc);
+    if (((dev_desc->bDeviceClass == USB_CLASS_MISC) && (dev_desc->bDeviceSubClass == USB_SUBCLASS_COMMON) &&
+            (dev_desc->bDeviceProtocol == USB_DEVICE_PROTOCOL_IAD)) ||
+            ((dev_desc->bDeviceClass == USB_CLASS_PER_INTERFACE) && (dev_desc->bDeviceSubClass == USB_SUBCLASS_NULL) &&
+             (dev_desc->bDeviceProtocol == USB_PROTOCOL_NULL))) {
+        // This is a composite device, that uses Interface Association Descriptor
+    	printf("This is a composite device, that uses Interface Association Descriptor \n");
+    	const usb_standard_desc_t *this_desc = (const usb_standard_desc_t *)config_desc;
+        do {
+            this_desc = usb_parse_next_descriptor_of_type(
+                            this_desc, config_desc->wTotalLength, USB_B_DESCRIPTOR_TYPE_INTERFACE_ASSOCIATION, &desc_offset);
+
+            if (this_desc == NULL) {
+                break;    // Reached end of configuration descriptor
+            }
+
+            const usb_iad_desc_t *iad_desc = (const usb_iad_desc_t *)this_desc;
+                // IAD with correct interface number was found: Check Class/Subclass codes, save Interface indexes
+
+                printf("iad_desc->bInterfaceCount   %i \n", iad_desc->bInterfaceCount);
+                printf("iad_desc->bFunctionClass    %i \n", iad_desc->bFunctionClass);
+                printf("iad_desc->bFunctionSubClass %i \n", iad_desc->bFunctionSubClass);
+        } while (1);
+    } else if ((dev_desc->bDeviceClass == USB_CLASS_COMM)) {
+        // This is a Communication Device Class
+    	printf("This is a Communication Device Class \n");
+    }
+
+
+
+
+
+
     //Get the device's config descriptor next
     driver_obj->actions &= ~ACTION_GET_DEV_DESC;
     driver_obj->actions |= ACTION_GET_CONFIG_DESC;
